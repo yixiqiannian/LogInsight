@@ -10,12 +10,16 @@ router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
 
 @router.post("/log/{log_id}")
-async def analyze_log(log_id: int, db: Session = Depends(get_db)):
+async def analyze_log(
+    log_id: int,
+    force: bool = Query(False, description="强制重新分析，忽略缓存"),
+    db: Session = Depends(get_db),
+):
     log_entry = log_service.get_log_by_id(db, log_id)
     if not log_entry:
         raise HTTPException(status_code=404, detail="Log not found")
 
-    result = await ai_service.analyze_log(log_id, priority=True)
+    result = await ai_service.analyze_log(log_id, priority=True, force=force)
     return {
         "log_id": log_id,
         "analysis": result,

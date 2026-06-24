@@ -86,8 +86,37 @@ def set_default_llm(config_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/system")
-def get_system_config():
+def get_system_config(db: Session = Depends(get_db)):
     from ..config import settings
+
+    default_llm = db.query(LLMConfig).filter(LLMConfig.is_default == True).first()
+    env_configured = bool(settings.LLM_API_KEY and settings.LLM_API_KEY != "your-api-key-here")
+
+    if default_llm:
+        llm_info = {
+            "api_type": default_llm.api_type,
+            "api_base": default_llm.api_base,
+            "model_name": default_llm.model_name,
+            "configured": True,
+            "source": "database",
+        }
+    elif env_configured:
+        llm_info = {
+            "api_type": settings.LLM_API_TYPE,
+            "api_base": settings.LLM_API_BASE,
+            "model_name": settings.LLM_MODEL_NAME,
+            "configured": True,
+            "source": "env",
+        }
+    else:
+        llm_info = {
+            "api_type": settings.LLM_API_TYPE,
+            "api_base": settings.LLM_API_BASE,
+            "model_name": settings.LLM_MODEL_NAME,
+            "configured": False,
+            "source": "none",
+        }
+
     return {
         "log_retention": {
             "info_days": settings.LOG_RETENTION_DAYS_INFO,
@@ -99,10 +128,5 @@ def get_system_config():
             "context_window_minutes": settings.CONTEXT_WINDOW_MINUTES,
             "auto_analyze_error": settings.AUTO_ANALYZE_ERROR,
         },
-        "llm": {
-            "api_type": settings.LLM_API_TYPE,
-            "api_base": settings.LLM_API_BASE,
-            "model_name": settings.LLM_MODEL_NAME,
-            "configured": bool(settings.LLM_API_KEY and settings.LLM_API_KEY != "your-api-key-here"),
-        },
+        "llm": llm_info,
     }

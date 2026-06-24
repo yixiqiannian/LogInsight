@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.database import Base, engine
+from app.database import Base, engine, run_migrations
 from app.api import api_router
 from app.services import log_service, ai_service
 from app.config import settings
@@ -18,6 +18,7 @@ from app.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    run_migrations()
     await log_service.start_batch_writer()
     await ai_service.start_worker()
     print(f"\n{'='*60}")
