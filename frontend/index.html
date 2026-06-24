@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LogInsight - AI智能日志分析器</title>
+<style>
+:root{
+  --bg:#0f172a;--bg2:#1e293b;--bg3:#334155;--ink:#f1f5f9;--muted:#94a3b8;
+  --rule:#475569;--accent:#06b6d4;--accent2:#10b981;--error:#ef4444;--warn:#f59e0b;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  --font-mono:'Consolas','Monaco','Courier New',monospace;
+  --radius:12px;--radius-sm:8px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:var(--font);color:var(--ink);background:var(--bg);line-height:1.6;min-height:100vh}
+
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(15,23,42,.9);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--rule);padding:0 1.5rem;height:56px;display:flex;align-items:center;justify-content:space-between}
+.nav-brand{display:flex;align-items:center;gap:.6rem;font-weight:700;font-size:1rem;color:var(--accent)}
+.nav-brand svg{width:26px;height:26px}
+.nav-tabs{display:flex;gap:.25rem}
+.nav-tab{padding:.5rem 1rem;font-size:.85rem;color:var(--muted);background:none;border:none;cursor:pointer;
+  border-radius:6px;transition:all .2s;font-family:var(--font)}
+.nav-tab:hover{color:var(--ink);background:var(--bg2)}
+.nav-tab.active{color:var(--accent);background:rgba(6,182,212,.1)}
+
+.main{padding-top:56px;min-height:100vh}
+.page{display:none;padding:1.5rem}
+.page.active{display:block}
+
+.container{max-width:1600px;margin:0 auto}
+
+.toolbar{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;
+  padding:.75rem 1rem;background:var(--bg2);border:1px solid var(--rule);border-radius:var(--radius-sm)}
+.filter-input{flex:1;min-width:200px;padding:.5rem .75rem;background:var(--bg);border:1px solid var(--rule);
+  border-radius:6px;color:var(--ink);font-family:var(--font-mono);font-size:.82rem;outline:none;transition:border-color .2s}
+.filter-input:focus{border-color:var(--accent)}
+.filter-tag{padding:.35rem .65rem;border-radius:4px;font-size:.72rem;font-weight:600;cursor:pointer;
+  border:none;font-family:var(--font);transition:all .2s}
+.filter-tag.error{background:rgba(239,68,68,.15);color:var(--error)}.filter-tag.error.active{background:var(--error);color:#fff}
+.filter-tag.warn{background:rgba(245,158,11,.15);color:var(--warn)}.filter-tag.warn.active{background:var(--warn);color:#fff}
+.filter-tag.info{background:rgba(6,182,212,.15);color:var(--accent)}.filter-tag.info.active{background:var(--accent);color:#fff}
+.filter-tag.debug{background:rgba(148,163,184,.15);color:var(--muted)}.filter-tag.debug.active{background:var(--muted);color:#fff}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;border-radius:6px;font-size:.82rem;
+  font-weight:600;cursor:pointer;border:none;transition:all .2s;font-family:var(--font)}
+.btn-primary{background:var(--accent);color:var(--bg)}.btn-primary:hover{background:#0891b2}
+.btn-secondary{background:transparent;color:var(--ink);border:1px solid var(--rule)}.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn-success{background:var(--accent2);color:var(--bg)}.btn-success:hover{background:#059669}
+.btn-danger{background:var(--error);color:#fff}.btn-danger:hover{background:#dc2626}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.workspace{display:grid;grid-template-columns:1fr 1fr;gap:1rem;height:calc(100vh - 140px)}
+@media(max-width:1024px){.workspace{grid-template-columns:1fr;height:auto}}
+
+.panel{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.panel-header{padding:.65rem 1rem;font-size:.82rem;font-weight:600;color:var(--muted);
+  background:rgba(30,41,59,.5);border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between}
+.panel-header .badge{font-size:.7rem;padding:.15rem .5rem;background:rgba(6,182,212,.15);color:var(--accent);border-radius:100px;font-weight:600}
+.panel-body{flex:1;overflow-y:auto;min-height:300px}
+
+.log-stream{font-family:var(--font-mono);font-size:.78rem}
+.log-line{padding:.3rem 1rem;display:flex;gap:.75rem;border-left:3px solid transparent;transition:background .15s;cursor:pointer}
+.log-line:hover{background:rgba(6,182,212,.05)}
+.log-line.selected{background:rgba(6,182,212,.1);outline:1px solid var(--accent)}
+.log-line.error{border-left-color:var(--error);background:rgba(239,68,68,.05)}
+.log-line.warn{border-left-color:var(--warn);background:rgba(245,158,11,.05)}
+.log-line.info{border-left-color:var(--accent)}
+.log-line.debug{border-left-color:var(--muted)}
+.log-time{color:var(--muted);white-space:nowrap;min-width:140px}
+.log-level{font-weight:700;min-width:50px;text-align:center;padding:.1rem .3rem;border-radius:3px;font-size:.65rem;text-transform:uppercase}
+.log-level.error{color:var(--error);background:rgba(239,68,68,.15)}
+.log-level.warn{color:var(--warn);background:rgba(245,158,11,.15)}
+.log-level.info{color:var(--accent);background:rgba(6,182,212,.15)}
+.log-level.debug{color:var(--muted);background:rgba(148,163,184,.15)}
+.log-service{color:var(--accent2);white-space:nowrap;min-width:100px}
+.log-msg{color:var(--ink);word-break:break-all;flex:1}
+.log-line.hidden{display:none}
+
+.analysis-panel{padding:1rem}
+.analysis-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;
+  color:var(--muted);text-align:center;gap:1rem;min-height:300px}
+.analysis-empty svg{opacity:.3}
+.analysis-result{display:none}
+.analysis-result.show{display:block}
+.analysis-header{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--rule)}
+.severity-badge{padding:.3rem .75rem;border-radius:6px;font-size:.78rem;font-weight:700}
+.severity-badge.critical{background:rgba(239,68,68,.15);color:var(--error);border:1px solid rgba(239,68,68,.3)}
+.severity-badge.high{background:rgba(249,115,22,.15);color:#f97316;border:1px solid rgba(249,115,22,.3)}
+.severity-badge.medium{background:rgba(245,158,11,.15);color:var(--warn);border:1px solid rgba(245,158,11,.3)}
+.severity-badge.low{background:rgba(16,185,129,.15);color:var(--accent2);border:1px solid rgba(16,185,129,.3)}
+.analysis-title{font-size:.95rem;font-weight:700;flex:1}
+.analysis-block{margin-bottom:1rem}
+.analysis-block-title{font-size:.75rem;font-weight:700;color:var(--accent);text-transform:uppercase;
+  letter-spacing:.05em;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem}
+.analysis-block-content{background:var(--bg);border:1px solid var(--rule);border-radius:var(--radius-sm);
+  padding:.75rem;font-size:.85rem;color:var(--ink);line-height:1.7}
+.analysis-block-content code{font-family:var(--font-mono);font-size:.78rem;background:rgba(6,182,212,.1);
+  color:var(--accent);padding:.1rem .35rem;border-radius:4px}
+.suggestion-list{display:flex;flex-direction:column;gap:.5rem}
+.suggestion-item{display:flex;gap:.6rem;align-items:flex-start;padding:.6rem;background:rgba(16,185,129,.08);
+  border:1px solid rgba(16,185,129,.2);border-radius:6px}
+.suggestion-num{width:22px;height:22px;border-radius:50%;background:var(--accent2);color:var(--bg);
+  display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;flex-shrink:0}
+.suggestion-text{font-size:.82rem;color:var(--ink)}
+.context-timeline{display:flex;flex-direction:column;gap:.4rem}
+.timeline-item{display:flex;gap:.6rem;align-items:flex-start;font-size:.8rem}
+.timeline-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.timeline-dot.error{background:var(--error)}.timeline-dot.warn{background:var(--warn)}
+.timeline-dot.info{background:var(--accent)}.timeline-dot.ok{background:var(--accent2)}
+.timeline-time{color:var(--muted);min-width:70px;font-family:var(--font-mono);font-size:.75rem}
+.timeline-msg{color:var(--ink);word-break:break-all}
+
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:768px){.form-grid{grid-template-columns:1fr}}
+.form-group{display:flex;flex-direction:column;gap:.4rem}
+.form-group label{font-size:.82rem;font-weight:600;color:var(--muted)}
+.form-group input,.form-group select,.form-group textarea{padding:.5rem .75rem;background:var(--bg);border:1px solid var(--rule);
+  border-radius:6px;color:var(--ink);font-size:.85rem;font-family:var(--font);outline:none;transition:border-color .2s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent)}
+.form-group .hint{font-size:.75rem;color:var(--muted)}
+
+.card{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--radius);padding:1.25rem}
+.card-title{font-size:1rem;font-weight:700;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.card-title .icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  background:rgba(6,182,212,.15);color:var(--accent)}
+
+.config-list{display:flex;flex-direction:column;gap:.75rem}
+.config-item{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;
+  background:var(--bg);border:1px solid var(--rule);border-radius:8px}
+.config-item-info{display:flex;flex-direction:column;gap:.2rem}
+.config-item-name{font-weight:600;font-size:.9rem}
+.config-item-desc{font-size:.78rem;color:var(--muted)}
+.config-item-actions{display:flex;gap:.5rem}
+
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1rem}
+@media(max-width:768px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
+.stat-card{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--radius);padding:1rem}
+.stat-value{font-size:1.75rem;font-weight:700;margin-bottom:.25rem}
+.stat-value.error{color:var(--error)}.stat-value.warn{color:var(--warn)}
+.stat-value.info{color:var(--accent)}.stat-value.success{color:var(--accent2)}
+.stat-label{font-size:.8rem;color:var(--muted)}
+
+.upload-zone{border:2px dashed var(--rule);border-radius:var(--radius);padding:3rem;text-align:center;
+  cursor:pointer;transition:all .2s;background:var(--bg2)}
+.upload-zone:hover{border-color:var(--accent);background:rgba(6,182,212,.05)}
+.upload-zone.drag-over{border-color:var(--accent2);background:rgba(16,185,129,.05)}
+.upload-zone svg{margin-bottom:1rem;opacity:.5}
+.upload-zone p{color:var(--muted);margin-bottom:.5rem}
+.upload-zone .hint{font-size:.78rem;color:var(--muted)}
+
+.task-list{display:flex;flex-direction:column;gap:.75rem}
+.task-item{padding:.75rem 1rem;background:var(--bg);border:1px solid var(--rule);border-radius:8px}
+.task-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}
+.task-name{font-weight:600;font-size:.88rem}
+.task-status{font-size:.72rem;padding:.15rem .5rem;border-radius:4px;font-weight:600}
+.task-status.processing{background:rgba(245,158,11,.15);color:var(--warn)}
+.task-status.completed{background:rgba(16,185,129,.15);color:var(--accent2)}
+.task-status.failed{background:rgba(239,68,68,.15);color:var(--error)}
+.task-meta{font-size:.78rem;color:var(--muted);display:flex;gap:1rem}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:200}
+.modal-overlay.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--rule);border-radius:var(--radius);padding:1.5rem;
+  max-width:500px;width:90%;max-height:80vh;overflow-y:auto}
+.modal-title{font-size:1.1rem;font-weight:700;margin-bottom:1rem}
+.modal-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.5rem}
+
+.toast-container{position:fixed;top:70px;right:20px;z-index:300;display:flex;flex-direction:column;gap:.5rem}
+.toast{padding:.75rem 1rem;background:var(--bg2);border:1px solid var(--rule);border-radius:8px;
+  box-shadow:0 4px 12px rgba(0,0,0,.3);font-size:.85rem;animation:slideIn .3s ease}
+.toast.success{border-left:3px solid var(--accent2)}
+.toast.error{border-left:3px solid var(--error)}
+.toast.info{border-left:3px solid var(--accent)}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.status-dot.connected{background:var(--accent2);animation:pulse 2s infinite}
+.status-dot.disconnected{background:var(--error)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--rule);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+
+.pagination{display:flex;align-items:center;justify-content:center;gap:.5rem;padding:.75rem;border-top:1px solid var(--rule)}
+.page-btn{padding:.3rem .65rem;background:var(--bg);border:1px solid var(--rule);border-radius:4px;
+  color:var(--muted);cursor:pointer;font-size:.78rem;transition:all .2s}
+.page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.page-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.page-btn:disabled{opacity:.4;cursor:not-allowed}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">
+    <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M4 7h20M4 14h16M4 21h12" stroke-linecap="round"/>
+      <circle cx="22" cy="21" r="3" fill="var(--error)" stroke="var(--error)"/>
+      <path d="M22 19v4M20 21h4" stroke="var(--bg)" stroke-width="1.5"/>
+    </svg>
+    LogInsight
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchPage('logs')">日志分析</button>
+    <button class="nav-tab" onclick="switchPage('upload')">文件上传</button>
+    <button class="nav-tab" onclick="switchPage('webhook')">Webhook</button>
+    <button class="nav-tab" onclick="switchPage('config')">模型配置</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:.75rem">
+    <span style="font-size:.78rem;color:var(--muted);display:flex;align-items:center;gap:.4rem">
+      <span class="status-dot" id="streamStatus"></span>
+      <span id="streamStatusText">实时流</span>
+    </span>
+  </div>
+</nav>
+
+<div class="main">
+
+  <div class="page active" id="page-logs">
+    <div class="container">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-value error" id="statError">0</div><div class="stat-label">ERROR</div></div>
+        <div class="stat-card"><div class="stat-value warn" id="statWarn">0</div><div class="stat-label">WARN</div></div>
+        <div class="stat-card"><div class="stat-value info" id="statInfo">0</div><div class="stat-label">INFO</div></div>
+        <div class="stat-card"><div class="stat-value success" id="statAnalysis">0</div><div class="stat-label">AI分析</div></div>
+      </div>
+
+      <div class="toolbar">
+        <input class="filter-input" type="text" placeholder="🔍 关键词过滤 / 正则表达式，如: Connection refused" id="searchInput" oninput="onSearchChange()">
+        <select class="filter-input" style="flex:0 0 150px;min-width:auto" id="serviceFilter" onchange="loadLogs()">
+          <option value="">所有服务</option>
+        </select>
+        <button class="filter-tag error active" onclick="toggleLevel('error',this)">ERROR</button>
+        <button class="filter-tag warn active" onclick="toggleLevel('warn',this)">WARN</button>
+        <button class="filter-tag info active" onclick="toggleLevel('info',this)">INFO</button>
+        <button class="filter-tag debug" onclick="toggleLevel('debug',this)">DEBUG</button>
+        <button class="btn btn-primary" onclick="analyzeLatestError()">AI分析</button>
+        <button class="btn btn-secondary" onclick="loadLogs()">刷新</button>
+      </div>
+
+      <div class="workspace">
+        <div class="panel">
+          <div class="panel-header">
+            <span>日志流</span>
+            <span class="badge" id="logCountBadge">0 条</span>
+          </div>
+          <div class="panel-body">
+            <div class="log-stream" id="logStream"></div>
+            <div class="pagination">
+              <button class="page-btn" onclick="changePage(-1)" id="prevBtn">上一页</button>
+              <span style="font-size:.8rem;color:var(--muted)">第 <span id="currentPage">1</span> / <span id="totalPages">1</span> 页</span>
+              <button class="page-btn" onclick="changePage(1)" id="nextBtn">下一页</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <span>AI 分析结果</span>
+            <span class="badge" id="analysisStatus">等待分析</span>
+          </div>
+          <div class="panel-body analysis-panel">
+            <div class="analysis-empty" id="analysisEmpty">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 2a7 7 0 0 1 7 7c0 3-2 5.5-4 7.5L12 22l-3-5.5C7 14.5 5 12 5 9a7 7 0 0 1 7-7z"/>
+                <circle cx="12" cy="9" r="2.5"/>
+              </svg>
+              <p>点击一条 ERROR 日志或点击 <strong>"AI 分析"</strong> 查看智能根因分析</p>
+            </div>
+            <div class="analysis-result" id="analysisResult"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-upload">
+    <div class="container" style="max-width:900px">
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-title">
+          <span class="icon">📤</span>
+          上传日志文件分析
+        </div>
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p><strong>点击选择文件</strong> 或拖拽到此处</p>
+          <p class="hint">支持 .log / .txt / .json 格式，自动解析并进行 AI 根因分析</p>
+          <input type="file" id="fileInput" style="display:none" accept=".log,.txt,.json" onchange="handleFileUpload(event)">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span class="icon">📋</span>
+          分析任务
+        </div>
+        <div class="task-list" id="taskList">
+          <p style="color:var(--muted);font-size:.85rem;text-align:center;padding:2rem">暂无上传任务</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-webhook">
+    <div class="container" style="max-width:1000px">
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-title">
+          <span class="icon">📥</span>
+          入站 Webhook（接收日志）
+        </div>
+        <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">将以下 URL 配置到你的日志系统或告警平台，即可自动推送日志到 LogInsight</p>
+        <div style="background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:.75rem;font-family:var(--font-mono);font-size:.8rem;display:flex;align-items:center;gap:.5rem">
+          <span id="webhookUrl" style="flex:1;color:var(--accent)">POST /api/webhook/inbound</span>
+          <button class="btn btn-secondary" onclick="copyWebhookUrl()">复制</button>
+        </div>
+        <div style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div style="background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:.75rem">
+            <div style="font-size:.82rem;font-weight:600;color:var(--accent2);margin-bottom:.5rem">支持的格式</div>
+            <div style="font-size:.78rem;color:var(--muted);font-family:var(--font-mono)">
+              • 单条日志: {level, message, service}<br>
+              • 批量日志: {logs: [...]}<br>
+              • 告警格式: {alerts: [...]}
+            </div>
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:.75rem">
+            <div style="font-size:.82rem;font-weight:600;color:var(--warn);margin-bottom:.5rem">测试推送</div>
+            <button class="btn btn-secondary" style="width:100%" onclick="sendTestWebhook()">发送测试日志</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span style="display:flex;align-items:center;gap:.5rem">
+            <span class="icon">📤</span>
+            出站 Webhook（推送通知）
+          </span>
+          <button class="btn btn-primary" onclick="openWebhookModal()">+ 添加配置</button>
+        </div>
+        <div class="config-list" id="webhookConfigs">
+          <p style="color:var(--muted);font-size:.85rem;text-align:center;padding:2rem">暂无出站 Webhook 配置</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-config">
+    <div class="container" style="max-width:900px">
+      <div class="card" style="margin-bottom:1.5rem">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span style="display:flex;align-items:center;gap:.5rem">
+            <span class="icon">🤖</span>
+            LLM 模型配置
+          </span>
+          <button class="btn btn-primary" onclick="openLLMModal()">+ 添加模型</button>
+        </div>
+        <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">支持所有 OpenAI 兼容接口的模型服务商（DeepSeek、通义千问、Ollama 本地模型等）</p>
+        <div class="config-list" id="llmConfigs">
+          <p style="color:var(--muted);font-size:.85rem;text-align:center;padding:2rem">暂无模型配置</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span class="icon">⚙️</span>
+          系统状态
+        </div>
+        <div id="systemConfig" style="font-size:.85rem;color:var(--muted)">加载中...</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="modal-overlay" id="llmModal">
+  <div class="modal">
+    <div class="modal-title">添加 LLM 模型配置</div>
+    <div class="form-grid">
+      <div class="form-group" style="grid-column:1/-1">
+        <label>配置名称</label>
+        <input type="text" id="llmName" placeholder="如：DeepSeek、本地Ollama">
+      </div>
+      <div class="form-group">
+        <label>服务商类型</label>
+        <select id="llmProvider">
+          <option value="openai_compatible">OpenAI 兼容</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="ollama">Ollama 本地</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>模型名称</label>
+        <input type="text" id="llmModelName" placeholder="如：gpt-3.5-turbo / deepseek-chat">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>API Base URL</label>
+        <input type="text" id="llmApiBase" placeholder="https://api.openai.com/v1">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>API Key</label>
+        <input type="password" id="llmApiKey" placeholder="sk-...">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label style="display:flex;align-items:center;gap:.5rem">
+          <input type="checkbox" id="llmDefault"> 设为默认模型
+        </label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('llmModal')">取消</button>
+      <button class="btn btn-primary" onclick="saveLLMConfig()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="webhookModal">
+  <div class="modal">
+    <div class="modal-title">添加出站 Webhook</div>
+    <div class="form-grid">
+      <div class="form-group" style="grid-column:1/-1">
+        <label>配置名称</label>
+        <input type="text" id="whName" placeholder="如：飞书告警群">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Webhook URL</label>
+        <input type="text" id="whUrl" placeholder="https://hooks.feishu.cn/...">
+      </div>
+      <div class="form-group">
+        <label>类型</label>
+        <select id="whType">
+          <option value="feishu">飞书</option>
+          <option value="dingtalk">钉钉</option>
+          <option value="slack">Slack</option>
+          <option value="generic">通用 Webhook</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>启用</label>
+        <select id="whEnabled">
+          <option value="true">是</option>
+          <option value="false">否</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('webhookModal')">取消</button>
+      <button class="btn btn-primary" onclick="saveWebhookConfig()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const API_BASE = window.location.origin;
+let currentPage = 1;
+let pageSize = 50;
+let totalLogs = 0;
+let activeLevels = new Set(['error', 'warn', 'info']);
+let selectedLogId = null;
+let eventSource = null;
+let searchTimeout = null;
+
+function switchPage(pageName) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + pageName).classList.add('active');
+  event.target.closest('.nav-tab')?.classList.add('active');
+
+  if (pageName === 'logs') loadLogs();
+  if (pageName === 'upload') loadTasks();
+  if (pageName === 'webhook') loadWebhookConfigs();
+  if (pageName === 'config') loadLLMConfigs();
+}
+
+async function api(path, options = {}) {
+  try {
+    const resp = await fetch(API_BASE + path, {
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      ...options,
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || 'Request failed');
+    }
+    return resp.json();
+  } catch (e) {
+    showToast(e.message, 'error');
+    throw e;
+  }
+}
+
+async function loadLogs() {
+  const search = document.getElementById('searchInput').value;
+  const service = document.getElementById('serviceFilter').value;
+  const levelStr = Array.from(activeLevels).join(',');
+
+  const params = new URLSearchParams({
+    page: currentPage,
+    page_size: pageSize,
+  });
+  if (levelStr) params.set('level', levelStr);
+  if (service) params.set('service', service);
+  if (search) params.set('keyword', search);
+
+  const data = await api(`/api/logs?${params}`);
+  totalLogs = data.total;
+  renderLogs(data.items);
+  updatePagination();
+  updateStats(data.items);
+}
+
+function renderLogs(logs) {
+  const stream = document.getElementById('logStream');
+  stream.innerHTML = '';
+  document.getElementById('logCountBadge').textContent = `${totalLogs} 条`;
+
+  logs.forEach(log => {
+    const div = document.createElement('div');
+    div.className = `log-line ${log.level}`;
+    div.dataset.id = log.id;
+    div.dataset.level = log.level;
+    if (log.id === selectedLogId) div.classList.add('selected');
+
+    const time = new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour12: false });
+    div.innerHTML = `
+      <span class="log-time">${time}</span>
+      <span class="log-level ${log.level}">${log.level.toUpperCase()}</span>
+      <span class="log-service">${log.service || '-'}</span>
+      <span class="log-msg">${escapeHtml(log.message)}</span>
+    `;
+    div.onclick = () => selectLog(log.id, div);
+    stream.appendChild(div);
+  });
+}
+
+function updateStats(logs) {
+  const counts = { error: 0, warn: 0, info: 0, debug: 0 };
+  logs.forEach(l => counts[l.level] = (counts[l.level] || 0) + 1);
+  document.getElementById('statError').textContent = counts.error || 0;
+  document.getElementById('statWarn').textContent = counts.warn || 0;
+  document.getElementById('statInfo').textContent = counts.info || 0;
+}
+
+function toggleLevel(level, btn) {
+  btn.classList.toggle('active');
+  if (activeLevels.has(level)) activeLevels.delete(level);
+  else activeLevels.add(level);
+  currentPage = 1;
+  loadLogs();
+}
+
+function onSearchChange() {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    currentPage = 1;
+    loadLogs();
+  }, 300);
+}
+
+function changePage(delta) {
+  const totalPages = Math.ceil(totalLogs / pageSize) || 1;
+  currentPage = Math.max(1, Math.min(totalPages, currentPage + delta));
+  loadLogs();
+}
+
+function updatePagination() {
+  const totalPages = Math.ceil(totalLogs / pageSize) || 1;
+  document.getElementById('currentPage').textContent = currentPage;
+  document.getElementById('totalPages').textContent = totalPages;
+  document.getElementById('prevBtn').disabled = currentPage <= 1;
+  document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+}
+
+async function selectLog(logId, element) {
+  selectedLogId = logId;
+  document.querySelectorAll('.log-line').forEach(l => l.classList.remove('selected'));
+  element.classList.add('selected');
+
+  try {
+    const result = await api(`/api/analysis/log/${logId}`);
+    if (result.status === 'pending' || result.status === 'processing') {
+      showAnalysisLoading();
+      setTimeout(() => selectLog(logId, element), 2000);
+    } else {
+      renderAnalysis(result);
+    }
+  } catch (e) {
+    if (e.message.includes('404') || e.message.includes('not found')) {
+      await analyzeLog(logId);
+    }
+  }
+}
+
+async function analyzeLog(logId) {
+  showAnalysisLoading();
+  const result = await api(`/api/analysis/log/${logId}`, { method: 'POST' });
+  if (result.analysis) renderAnalysis(result.analysis);
+}
+
+async function analyzeLatestError() {
+  const search = document.getElementById('searchInput').value;
+  const params = new URLSearchParams({ level: 'error', page_size: 1, page: 1 });
+  if (search) params.set('keyword', search);
+
+  const data = await api(`/api/logs?${params}`);
+  if (data.items.length === 0) {
+    showToast('当前没有 ERROR 级别的日志', 'info');
+    return;
+  }
+  selectedLogId = data.items[0].id;
+  await analyzeLog(selectedLogId);
+  loadLogs();
+}
+
+function showAnalysisLoading() {
+  document.getElementById('analysisEmpty').style.display = 'none';
+  const result = document.getElementById('analysisResult');
+  result.classList.add('show');
+  document.getElementById('analysisStatus').textContent = '分析中...';
+  document.getElementById('analysisStatus').style.color = 'var(--warn)';
+  result.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--muted)">⏳ AI 正在分析，请稍候...</div>';
+}
+
+function renderAnalysis(result) {
+  const empty = document.getElementById('analysisEmpty');
+  const container = document.getElementById('analysisResult');
+  const statusBadge = document.getElementById('analysisStatus');
+
+  empty.style.display = 'none';
+  container.classList.add('show');
+
+  statusBadge.textContent = result.status === 'completed' ? '分析完成' : result.status;
+  statusBadge.style.color = result.status === 'completed' ? 'var(--accent2)' : 'var(--warn)';
+
+  let suggestions = [];
+  try { suggestions = JSON.parse(result.suggestions || '[]'); } catch (e) {}
+
+  let contextLogs = [];
+  try { contextLogs = JSON.parse(result.context_logs || '[]'); } catch (e) {}
+
+  const sevClass = result.severity || 'medium';
+
+  container.innerHTML = `
+    <div class="analysis-header">
+      <span class="severity-badge ${sevClass}">${(result.severity || 'medium').toUpperCase()}</span>
+      <span class="analysis-title">${escapeHtml(result.summary || '').slice(0, 80)}</span>
+    </div>
+
+    <div class="analysis-block">
+      <div class="analysis-block-title">📝 错误摘要</div>
+      <div class="analysis-block-content">${formatText(result.summary || '')}</div>
+    </div>
+
+    <div class="analysis-block">
+      <div class="analysis-block-title">🔍 根因分析</div>
+      <div class="analysis-block-content">${formatText(result.root_cause || '')}</div>
+    </div>
+
+    ${contextLogs.length > 0 ? `
+    <div class="analysis-block">
+      <div class="analysis-block-title">⏱️ 上下文时间线</div>
+      <div class="analysis-block-content">
+        <div class="context-timeline">
+          ${contextLogs.map(l => `
+            <div class="timeline-item">
+              <span class="timeline-dot ${l.level === 'error' ? 'error' : l.level === 'warn' ? 'warn' : l.level === 'info' ? 'info' : 'ok'}"></span>
+              <span class="timeline-time">${l.time || ''}</span>
+              <span class="timeline-msg">${escapeHtml(l.message || '')}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
+    <div class="analysis-block">
+      <div class="analysis-block-title">💡 处理建议</div>
+      <div class="analysis-block-content">
+        <div class="suggestion-list">
+          ${suggestions.map((s, i) => `
+            <div class="suggestion-item">
+              <span class="suggestion-num">${i + 1}</span>
+              <span class="suggestion-text">${formatText(s)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div style="font-size:.75rem;color:var(--muted);text-align:right">
+      模型: ${result.model_used || 'unknown'}
+    </div>
+  `;
+}
+
+function formatText(text) {
+  return escapeHtml(text)
+    .replace(/\n/g, '<br>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function connectSSE() {
+  if (eventSource) eventSource.close();
+
+  try {
+    eventSource = new EventSource(API_BASE + '/api/stream/logs');
+
+    eventSource.onopen = () => {
+      document.getElementById('streamStatus').className = 'status-dot connected';
+      document.getElementById('streamStatusText').textContent = '实时连接';
+    };
+
+    eventSource.onmessage = (event) => {
+      const log = JSON.parse(event.data);
+      if (currentPage === 1 && activeLevels.has(log.level)) {
+        const stream = document.getElementById('logStream');
+        const firstLine = stream.firstChild;
+        if (firstLine && stream.children.length >= pageSize) {
+          stream.removeChild(stream.lastChild);
+        }
+
+        const div = document.createElement('div');
+        div.className = `log-line ${log.level}`;
+        div.dataset.id = log.id;
+        div.dataset.level = log.level;
+
+        const time = new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour12: false });
+        div.innerHTML = `
+          <span class="log-time">${time}</span>
+          <span class="log-level ${log.level}">${log.level.toUpperCase()}</span>
+          <span class="log-service">${log.service || '-'}</span>
+          <span class="log-msg">${escapeHtml(log.message)}</span>
+        `;
+        div.onclick = () => selectLog(log.id, div);
+        stream.insertBefore(div, stream.firstChild);
+
+        const statEl = document.getElementById('stat' + log.level.charAt(0).toUpperCase() + log.level.slice(1));
+        if (statEl) statEl.textContent = parseInt(statEl.textContent) + 1;
+      }
+    };
+
+    eventSource.onerror = () => {
+      document.getElementById('streamStatus').className = 'status-dot disconnected';
+      document.getElementById('streamStatusText').textContent = '连接断开';
+      setTimeout(connectSSE, 3000);
+    };
+  } catch (e) {
+    console.error('SSE error:', e);
+  }
+}
+
+async function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  showToast('开始分析文件...', 'info');
+
+  try {
+    const result = await fetch(API_BASE + '/api/upload/analyze', {
+      method: 'POST',
+      body: formData,
+    }).then(r => r.json());
+
+    showToast('文件上传成功，正在分析中...', 'success');
+    loadTasks();
+    pollTask(result.task_id);
+  } catch (e) {
+    showToast('上传失败: ' + e.message, 'error');
+  }
+}
+
+async function loadTasks() {
+  const data = await api('/api/upload/tasks');
+  const list = document.getElementById('taskList');
+
+  if (!data.tasks || data.tasks.length === 0) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:2rem">暂无上传任务</p>';
+    return;
+  }
+
+  list.innerHTML = data.tasks.map(task => `
+    <div class="task-item">
+      <div class="task-header">
+        <span class="task-name">${escapeHtml(task.filename)}</span>
+        <span class="task-status ${task.status}">${statusText(task.status)}</span>
+      </div>
+      <div class="task-meta">
+        <span>总行数: ${task.total_lines}</span>
+        <span>ERROR: ${task.error_count || 0}</span>
+        <span>分析: ${(task.analyses || []).length}</span>
+      </div>
+      ${task.analyses && task.analyses.length > 0 ? `
+        <div style="margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--rule)">
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:.4rem">Top 分析结果:</div>
+          ${task.analyses.slice(0, 3).map(a => `
+            <div style="font-size:.8rem;padding:.35rem .5rem;background:var(--bg);border-radius:4px;margin-bottom:.3rem">
+              <span style="color:var(--error);font-weight:600">[${(a.severity||'').toUpperCase()}]</span>
+              ${escapeHtml(a.summary || '').slice(0, 80)}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+async function pollTask(taskId) {
+  const poll = async () => {
+    const task = await api(`/api/upload/task/${taskId}`);
+    loadTasks();
+    if (task.status === 'processing') {
+      setTimeout(poll, 2000);
+    } else if (task.status === 'completed') {
+      showToast('文件分析完成！', 'success');
+    } else if (task.status === 'failed') {
+      showToast('分析失败: ' + (task.error || '未知错误'), 'error');
+    }
+  };
+  poll();
+}
+
+function statusText(status) {
+  const map = { processing: '分析中', completed: '已完成', failed: '失败', pending: '等待中' };
+  return map[status] || status;
+}
+
+const uploadZone = document.getElementById('uploadZone');
+uploadZone?.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadZone.classList.add('drag-over');
+});
+uploadZone?.addEventListener('dragleave', () => {
+  uploadZone.classList.remove('drag-over');
+});
+uploadZone?.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const input = document.getElementById('fileInput');
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    handleFileUpload({ target: input });
+  }
+});
+
+async function loadWebhookConfigs() {
+  const data = await api('/api/webhook/configs');
+  const list = document.getElementById('webhookConfigs');
+
+  if (!data.items || data.items.length === 0) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:2rem">暂无出站 Webhook 配置</p>';
+    return;
+  }
+
+  list.innerHTML = data.items.map(item => `
+    <div class="config-item">
+      <div class="config-item-info">
+        <span class="config-item-name">${escapeHtml(item.name)}</span>
+        <span class="config-item-desc">${escapeHtml(item.url).slice(0, 60)}...</span>
+      </div>
+      <div class="config-item-actions">
+        <button class="btn btn-secondary" onclick="testWebhook(${item.id})">测试</button>
+        <button class="btn btn-danger" onclick="deleteWebhook(${item.id})">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function copyWebhookUrl() {
+  const url = API_BASE + '/api/webhook/inbound';
+  navigator.clipboard.writeText(url);
+  showToast('Webhook URL 已复制', 'success');
+}
+
+async function sendTestWebhook() {
+  const testLogs = [
+    { level: 'info', message: '[api-gateway] Test log from LogInsight', service: 'test' },
+    { level: 'error', message: '[db-service] Connection refused: test error for demo', service: 'db-service' },
+  ];
+  await api('/api/webhook/inbound', {
+    method: 'POST',
+    body: JSON.stringify({ logs: testLogs, source: 'test' }),
+  });
+  showToast('测试日志已发送', 'success');
+  switchPage('logs');
+}
+
+function openWebhookModal() {
+  document.getElementById('webhookModal').classList.add('show');
+}
+
+async function saveWebhookConfig() {
+  const name = document.getElementById('whName').value;
+  const url = document.getElementById('whUrl').value;
+  const webhook_type = document.getElementById('whType').value;
+  const enabled = document.getElementById('whEnabled').value === 'true';
+
+  if (!name || !url) {
+    showToast('请填写名称和URL', 'error');
+    return;
+  }
+
+  await api('/api/webhook/configs', {
+    method: 'POST',
+    body: JSON.stringify({ name, url, webhook_type, enabled }),
+  });
+
+  closeModal('webhookModal');
+  showToast('Webhook 配置已保存', 'success');
+  loadWebhookConfigs();
+}
+
+async function testWebhook(id) {
+  await api(`/api/webhook/test/${id}`, { method: 'POST' });
+  showToast('测试消息已发送', 'success');
+}
+
+async function deleteWebhook(id) {
+  if (!confirm('确定要删除这个 Webhook 配置吗？')) return;
+  await api(`/api/webhook/configs/${id}`, { method: 'DELETE' });
+  showToast('已删除', 'success');
+  loadWebhookConfigs();
+}
+
+async function loadLLMConfigs() {
+  const data = await api('/api/config/llm');
+  const list = document.getElementById('llmConfigs');
+
+  if (!data.items || data.items.length === 0) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:.85rem;text-align:center;padding:2rem">暂无模型配置</p>';
+  } else {
+    list.innerHTML = data.items.map(item => `
+      <div class="config-item">
+        <div class="config-item-info">
+          <span class="config-item-name">
+            ${escapeHtml(item.name)}
+            ${item.is_default ? '<span style="margin-left:.5rem;font-size:.7rem;padding:.1rem .4rem;background:var(--accent);color:var(--bg);border-radius:4px">默认</span>' : ''}
+          </span>
+          <span class="config-item-desc">${escapeHtml(item.model_name)} · ${escapeHtml(item.api_base)}</span>
+        </div>
+        <div class="config-item-actions">
+          ${!item.is_default ? `<button class="btn btn-secondary" onclick="setDefaultLLM(${item.id})">设为默认</button>` : ''}
+          <button class="btn btn-danger" onclick="deleteLLM(${item.id})">删除</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const sysConfig = await api('/api/config/system');
+  document.getElementById('systemConfig').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        <div style="font-weight:600;color:var(--ink);margin-bottom:.5rem">日志保留策略</div>
+        <div>INFO: ${sysConfig.log_retention.info_days} 天</div>
+        <div>WARN: ${sysConfig.log_retention.warn_days} 天</div>
+        <div>ERROR: ${sysConfig.log_retention.error_days} 天</div>
+        <div>DEBUG 持久化: ${sysConfig.log_retention.debug_persist ? '是' : '否'}</div>
+      </div>
+      <div>
+        <div style="font-weight:600;color:var(--ink);margin-bottom:.5rem">AI 分析配置</div>
+        <div>上下文窗口: ${sysConfig.analysis.context_window_minutes} 分钟</div>
+        <div>自动分析 ERROR: ${sysConfig.analysis.auto_analyze_error ? '是' : '否'}</div>
+        <div>当前模型: ${sysConfig.llm.model_name}</div>
+        <div>LLM 已配置: ${sysConfig.llm.configured ? '<span style="color:var(--accent2)">是</span>' : '<span style="color:var(--warn)">否 (Mock模式)</span>'}</div>
+      </div>
+    </div>
+  `;
+}
+
+function openLLMModal() {
+  document.getElementById('llmModal').classList.add('show');
+}
+
+async function saveLLMConfig() {
+  const name = document.getElementById('llmName').value;
+  const provider = document.getElementById('llmProvider').value;
+  const api_base = document.getElementById('llmApiBase').value;
+  const api_key = document.getElementById('llmApiKey').value;
+  const model_name = document.getElementById('llmModelName').value;
+  const is_default = document.getElementById('llmDefault').checked;
+
+  if (!name || !api_base || !api_key || !model_name) {
+    showToast('请填写完整信息', 'error');
+    return;
+  }
+
+  await api('/api/config/llm', {
+    method: 'POST',
+    body: JSON.stringify({ name, provider, api_base, api_key, model_name, is_default }),
+  });
+
+  closeModal('llmModal');
+  showToast('模型配置已保存', 'success');
+  loadLLMConfigs();
+}
+
+async function setDefaultLLM(id) {
+  await api(`/api/config/llm/${id}/set-default`, { method: 'POST' });
+  showToast('已设为默认模型', 'success');
+  loadLLMConfigs();
+}
+
+async function deleteLLM(id) {
+  if (!confirm('确定要删除这个模型配置吗？')) return;
+  await api(`/api/config/llm/${id}`, { method: 'DELETE' });
+  showToast('已删除', 'success');
+  loadLLMConfigs();
+}
+
+function closeModal(modalId) {
+  document.getElementById(modalId).classList.remove('show');
+}
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadLogs();
+  connectSSE();
+  loadLLMConfigs();
+  loadWebhookConfigs();
+});
+</script>
+</body>
+</html>
