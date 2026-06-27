@@ -193,6 +193,15 @@ class WebhookService:
         content_parts.append(f"> [{(log_entry.level or '').upper()}] {log_entry.message}")
         content_parts.append("")
 
+        raw_data = getattr(log_entry, "raw_data", None) or ""
+        if raw_data and raw_data.strip() and raw_data != log_entry.message:
+            content_parts.append("**原始告警内容**")
+            raw_preview = raw_data[:500]
+            if len(raw_data) > 500:
+                raw_preview += "..."
+            content_parts.append(f"```\n{raw_preview}\n```")
+            content_parts.append("")
+
         if suggestions_text and suggestions_text.strip():
             content_parts.append("**处理建议**")
             content_parts.append(suggestions_text.strip())

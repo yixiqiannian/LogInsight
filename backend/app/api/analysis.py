@@ -31,7 +31,37 @@ def get_analysis_result(log_id: int, db: Session = Depends(get_db)):
     result = ai_service.get_analysis_result(db, log_id)
     if not result:
         raise HTTPException(status_code=404, detail="Analysis not found")
-    return result
+
+    log_entry = log_service.get_log_by_id(db, log_id)
+    raw_log = ""
+    if log_entry:
+        if log_entry.raw_data:
+            raw_log = log_entry.raw_data
+        else:
+            raw_log = log_entry.message or ""
+
+    return {
+        "id": result.id,
+        "log_id": result.log_id,
+        "created_at": result.created_at,
+        "summary": result.summary,
+        "root_cause": result.root_cause,
+        "impact_scope": result.impact_scope,
+        "suggestions": result.suggestions,
+        "troubleshooting_commands": result.troubleshooting_commands,
+        "severity": result.severity,
+        "context_logs": result.context_logs,
+        "model_used": result.model_used,
+        "status": result.status,
+        "incident_id": result.incident_id or 0,
+        "is_incremental": result.is_incremental or False,
+        "scenario": result.scenario or "",
+        "raw_log": raw_log,
+        "log_message": log_entry.message if log_entry else "",
+        "log_level": log_entry.level if log_entry else "",
+        "log_service": log_entry.service if log_entry else "",
+        "log_source": log_entry.source if log_entry else "",
+    }
 
 
 @router.get("")

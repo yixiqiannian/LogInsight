@@ -830,6 +830,16 @@ function renderAnalysis(result) {
     </div>
     ` : ''}
 
+    ${result.raw_log ? `
+    <div class="analysis-block">
+      <div class="analysis-block-title" style="cursor:pointer;user-select:none" onclick="toggleRawLog()">
+        📄 原始日志
+        <span id="rawLogToggle" style="margin-left:auto;font-size:.75rem;color:var(--muted)">▼ 展开</span>
+      </div>
+      <div id="rawLogContent" style="display:none;margin-top:.5rem;padding:.75rem;background:#0f172a;border:1px solid #1e293b;border-radius:6px;max-height:300px;overflow:auto;font-family:Consolas,Monaco,monospace;font-size:.78rem;line-height:1.5;color:#e2e8f0;white-space:pre-wrap;word-break:break-all">${escapeHtml(result.raw_log)}</div>
+    </div>
+    ` : ''}
+
     <div style="font-size:.75rem;color:var(--muted);text-align:right">
       模型: ${result.model_used || 'unknown'}
     </div>
@@ -852,6 +862,19 @@ function toggleContext() {
 function toggleTroubleshoot() {
   const content = document.getElementById('troubleshootContent');
   const toggle = document.getElementById('troubleshootToggle');
+  if (!content) return;
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    toggle.textContent = '▲ 收起';
+  } else {
+    content.style.display = 'none';
+    toggle.textContent = '▼ 展开';
+  }
+}
+
+function toggleRawLog() {
+  const content = document.getElementById('rawLogContent');
+  const toggle = document.getElementById('rawLogToggle');
   if (!content) return;
   if (content.style.display === 'none') {
     content.style.display = 'block';
