@@ -38,6 +38,7 @@ class AnalysisResult(Base):
     status = Column(String(20), default="pending")
     incident_id = Column(Integer, default=0)
     is_incremental = Column(Boolean, default=False)
+    scenario = Column(String(100), default="")
 
 
 class WebhookConfig(Base):

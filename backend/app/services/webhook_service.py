@@ -162,8 +162,19 @@ class WebhookService:
 
         impact_scope = analysis.impact_scope or ""
         troubleshooting = analysis.troubleshooting_commands or ""
+        scenario = getattr(analysis, "scenario", "") or ""
+        is_incr = getattr(analysis, "is_incremental", False)
 
         content_parts = []
+
+        if scenario or is_incr:
+            tags = []
+            if scenario:
+                tags.append(f"🏷️ {scenario[:40]}")
+            if is_incr:
+                tags.append("📈 增量分析")
+            content_parts.append("  ".join(tags))
+            content_parts.append("")
 
         content_parts.append("**错误摘要**")
         content_parts.append(analysis.summary or "未知")

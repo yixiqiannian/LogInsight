@@ -41,6 +41,9 @@ def run_migrations():
         if "is_incremental" not in columns:
             conn.execute(text("ALTER TABLE analysis_results ADD COLUMN is_incremental INTEGER DEFAULT 0"))
             print("[DB] Added column: analysis_results.is_incremental")
+        if "scenario" not in columns:
+            conn.execute(text("ALTER TABLE analysis_results ADD COLUMN scenario VARCHAR(100) DEFAULT ''"))
+            print("[DB] Added column: analysis_results.scenario")
 
         wh_columns = [row[1] for row in conn.execute(text("PRAGMA table_info(webhook_configs)"))]
         if "push_severity" not in wh_columns:
