@@ -47,6 +47,7 @@ class WebhookConfig(Base):
     webhook_type = Column(String(20), default="outbound")
     enabled = Column(Boolean, default=True)
     secret = Column(String(200), default="")
+    push_severity = Column(String(20), default="p1p2")
     created_at = Column(DateTime, default=func.now())
 
 

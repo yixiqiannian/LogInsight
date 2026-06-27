@@ -130,6 +130,22 @@ def delete_webhook_config(config_id: int, db: Session = Depends(get_db)):
     return {"status": "deleted"}
 
 
+@router.put("/configs/{config_id}")
+def update_webhook_config(
+    config_id: int,
+    config_data: WebhookConfigCreate,
+    db: Session = Depends(get_db),
+):
+    config = db.query(WebhookConfig).filter(WebhookConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+    for key, value in config_data.model_dump().items():
+        setattr(config, key, value)
+    db.commit()
+    db.refresh(config)
+    return config
+
+
 @router.post("/test/{config_id}")
 async def test_webhook(config_id: int, db: Session = Depends(get_db)):
     config = db.query(WebhookConfig).filter(WebhookConfig.id == config_id).first()

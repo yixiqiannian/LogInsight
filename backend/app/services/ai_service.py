@@ -217,6 +217,13 @@ class AIService:
             result.model_used = self._current_config["model_name"] if self._current_config else "mock"
             result.status = "completed"
             db.commit()
+            db.refresh(result)
+
+            try:
+                from .webhook_service import webhook_service
+                await webhook_service.push_analysis_result(db, log_entry, result)
+            except Exception as push_err:
+                print(f"[AIService] Push analysis result error: {push_err}")
 
         except Exception as e:
             print(f"[AIService] Do analysis error: {e}")

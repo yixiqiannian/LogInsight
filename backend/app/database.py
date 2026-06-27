@@ -35,4 +35,10 @@ def run_migrations():
         if "troubleshooting_commands" not in columns:
             conn.execute(text("ALTER TABLE analysis_results ADD COLUMN troubleshooting_commands TEXT DEFAULT ''"))
             print("[DB] Added column: troubleshooting_commands")
+
+        wh_columns = [row[1] for row in conn.execute(text("PRAGMA table_info(webhook_configs)"))]
+        if "push_severity" not in wh_columns:
+            conn.execute(text("ALTER TABLE webhook_configs ADD COLUMN push_severity VARCHAR(20) DEFAULT 'p1p2'"))
+            print("[DB] Added column: webhook_configs.push_severity")
+
         conn.commit()

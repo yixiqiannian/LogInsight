@@ -75,6 +75,7 @@ class WebhookConfigCreate(BaseModel):
     webhook_type: str = "outbound"
     enabled: bool = True
     secret: str = ""
+    push_severity: str = "p1p2"
 
 
 class LLMConfigCreate(BaseModel):

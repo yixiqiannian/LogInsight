@@ -481,6 +481,15 @@ body{font-family:var(--font);color:var(--ink);background:var(--bg);line-height:1
           <option value="false">否</option>
         </select>
       </div>
+      <div class="form-group">
+        <label>推送级别</label>
+        <select id="whPushSeverity">
+          <option value="p1">仅 P1</option>
+          <option value="p1p2" selected>P1 + P2</option>
+          <option value="all">全部推送</option>
+          <option value="none">不推送</option>
+        </select>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('webhookModal')">取消</button>
@@ -1030,18 +1039,26 @@ async function loadWebhookConfigs() {
     return;
   }
 
-  list.innerHTML = data.items.map(item => `
+  list.innerHTML = data.items.map(item => {
+    const sevLabel = {
+      p1: '仅 P1',
+      p1p2: 'P1 + P2',
+      all: '全部',
+      none: '不推送'
+    }[item.push_severity] || item.push_severity;
+    return `
     <div class="config-item">
       <div class="config-item-info">
-        <span class="config-item-name">${escapeHtml(item.name)}</span>
-        <span class="config-item-desc">${escapeHtml(item.url).slice(0, 60)}...</span>
+        <span class="config-item-name">${escapeHtml(item.name)} <span style="font-size:.72rem;color:var(--muted);font-weight:normal;margin-left:.4rem">[${escapeHtml(item.webhook_type)}]</span></span>
+        <span class="config-item-desc">${escapeHtml(item.url).slice(0, 60)}... · 推送级别: ${sevLabel} ${item.enabled ? '' : '· 已停用'}</span>
       </div>
       <div class="config-item-actions">
         <button class="btn btn-secondary" onclick="testWebhook(${item.id})">测试</button>
+        <button class="btn btn-secondary" onclick="editWebhook(${item.id})">编辑</button>
         <button class="btn btn-danger" onclick="deleteWebhook(${item.id})">删除</button>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function copyWebhookUrl() {
@@ -1103,7 +1120,30 @@ async function sendTestGrafanaAlert() {
   switchPage('logs');
 }
 
+let editingWebhookId = null;
+
 function openWebhookModal() {
+  editingWebhookId = null;
+  document.getElementById('webhookModal').querySelector('.modal-title').textContent = '添加出站 Webhook';
+  document.getElementById('whName').value = '';
+  document.getElementById('whUrl').value = '';
+  document.getElementById('whType').value = 'feishu';
+  document.getElementById('whEnabled').value = 'true';
+  document.getElementById('whPushSeverity').value = 'p1p2';
+  document.getElementById('webhookModal').classList.add('show');
+}
+
+async function editWebhook(id) {
+  const data = await api('/api/webhook/configs');
+  const item = data.items.find(i => i.id === id);
+  if (!item) return;
+  editingWebhookId = id;
+  document.getElementById('webhookModal').querySelector('.modal-title').textContent = '编辑出站 Webhook';
+  document.getElementById('whName').value = item.name || '';
+  document.getElementById('whUrl').value = item.url || '';
+  document.getElementById('whType').value = item.webhook_type || 'feishu';
+  document.getElementById('whEnabled').value = item.enabled ? 'true' : 'false';
+  document.getElementById('whPushSeverity').value = item.push_severity || 'p1p2';
   document.getElementById('webhookModal').classList.add('show');
 }
 
@@ -1112,16 +1152,24 @@ async function saveWebhookConfig() {
   const url = document.getElementById('whUrl').value;
   const webhook_type = document.getElementById('whType').value;
   const enabled = document.getElementById('whEnabled').value === 'true';
+  const push_severity = document.getElementById('whPushSeverity').value;
 
   if (!name || !url) {
     showToast('请填写名称和URL', 'error');
     return;
   }
 
-  await api('/api/webhook/configs', {
-    method: 'POST',
-    body: JSON.stringify({ name, url, webhook_type, enabled }),
-  });
+  if (editingWebhookId) {
+    await api(`/api/webhook/configs/${editingWebhookId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, url, webhook_type, enabled, push_severity }),
+    });
+  } else {
+    await api('/api/webhook/configs', {
+      method: 'POST',
+      body: JSON.stringify({ name, url, webhook_type, enabled, push_severity }),
+    });
+  }
 
   closeModal('webhookModal');
   showToast('Webhook 配置已保存', 'success');
