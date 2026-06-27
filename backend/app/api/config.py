@@ -88,6 +88,7 @@ def set_default_llm(config_id: int, db: Session = Depends(get_db)):
 @router.get("/system")
 def get_system_config(db: Session = Depends(get_db)):
     from ..config import settings
+    from ..services.incident_service import get_system_config as get_sys_cfg
 
     default_llm = db.query(LLMConfig).filter(LLMConfig.is_default == True).first()
     env_configured = bool(settings.LLM_API_KEY and settings.LLM_API_KEY != "your-api-key-here")
@@ -117,6 +118,8 @@ def get_system_config(db: Session = Depends(get_db)):
             "source": "none",
         }
 
+    auto_analyze_level = get_sys_cfg(db, "auto_analyze_level", "error")
+
     return {
         "log_retention": {
             "info_days": settings.LOG_RETENTION_DAYS_INFO,
@@ -126,7 +129,17 @@ def get_system_config(db: Session = Depends(get_db)):
         },
         "analysis": {
             "context_window_minutes": settings.CONTEXT_WINDOW_MINUTES,
-            "auto_analyze_error": settings.AUTO_ANALYZE_ERROR,
+            "auto_analyze_level": auto_analyze_level,
         },
         "llm": llm_info,
     }
+
+
+@router.post("/system/auto-analyze-level")
+def set_auto_analyze_level(level_data: dict, db: Session = Depends(get_db)):
+    from ..services.incident_service import set_system_config
+    level = level_data.get("level", "error").lower()
+    if level not in ("all", "error", "warn", "none"):
+        level = "error"
+    set_system_config(db, "auto_analyze_level", level)
+    return {"status": "ok", "level": level}

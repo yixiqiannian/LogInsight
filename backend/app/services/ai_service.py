@@ -49,6 +49,66 @@ SYSTEM_PROMPT = """你是一名拥有10年以上经验的 Kubernetes SRE 与 AIO
 - 排障命令必须放在 ```bash ... ``` 代码块里
 """
 
+INCREMENTAL_PROMPT = """你是一名拥有10年以上经验的 Kubernetes SRE 与 AIOps 专家，所有回答必须使用中文。
+
+这是一次**增量分析**：同一故障事件有新的日志补充，上一次分析结论如下：
+
+【上一次分析摘要】
+{previous_summary}
+
+【上一次根因分析】
+{previous_root_cause}
+
+【上一次处理建议】
+{previous_suggestions}
+
+【上一次严重等级】
+{previous_severity}
+
+====================
+【新的日志及上下文】
+{context}
+====================
+
+请基于上一次的分析结论，结合新补充的日志进行**增量更新分析**：
+- 如果新日志确认了之前的判断，给出确认说明
+- 如果新日志发现了新的线索或根因变化，更新分析结论
+- 如果严重等级有变化，说明变化原因
+- 处理建议根据新情况更新，保留仍然有效的建议
+
+【输出格式要求】
+严格按照以下5个部分输出，每个部分用明确的标记开头：
+
+【错误摘要】
+（更新后的错误摘要）
+
+【根因分析】
+（更新后的根因分析，说明相比上次有哪些新发现或变化）
+
+【影响范围】
+（更新后的影响范围）
+
+【严重等级】
+（P1 紧急 / P2 高 / P3 中 / P4 低，如有变化说明原因）
+
+【处理建议】
+1. （第一条建议）
+2. （第二条建议）
+3. （第三条建议）
+4. （第四条建议）
+5. （第五条建议）
+（按优先级排序，保留有效建议，新增新建议）
+
+【排障命令】
+（更新后的排障命令，放在 ```bash ... ``` 代码块中）
+
+【重要提醒】
+- 所有内容必须是中文
+- 严格按照上面的标记输出
+- 要体现增量分析的特点，说明与上次分析的差异
+- 排障命令必须放在 ```bash ... ``` 代码块里
+"""
+
 
 class AIService:
     def __init__(self):
@@ -162,6 +222,7 @@ class AIService:
 
     async def _do_analysis(self, log_id: int):
         db = SessionLocal()
+        result = None
         try:
             result = db.query(AnalysisResult).filter(AnalysisResult.log_id == log_id).first()
             if not result:
@@ -184,15 +245,33 @@ class AIService:
                     }
                     print(f"[AIService] LLM loaded from db: {default_config.model_name}")
 
+            from .incident_service import incident_service
+            log_data = {
+                "level": log_entry.level,
+                "message": log_entry.message,
+                "service": log_entry.service,
+                "source": log_entry.source,
+            }
+            incident = incident_service.find_or_create_incident(db, log_data, log_entry)
+            result.incident_id = incident.id
+
+            previous_analysis = incident_service.get_latest_analysis(db, incident)
+            is_incremental = previous_analysis is not None and incident.log_count > 1
+            result.is_incremental = is_incremental
+
             from .log_service import log_service
             context_logs = log_service.get_context_logs(
                 db, log_id, minutes=settings.CONTEXT_WINDOW_MINUTES
             )
 
-            context_text = self._format_context(log_entry, context_logs)
-
             if self._current_config:
-                analysis = await self._call_llm(context_text)
+                if is_incremental:
+                    context_text = self._format_context(log_entry, context_logs)
+                    analysis = await self._call_llm_incremental(previous_analysis, context_text)
+                    print(f"[AIService] Incremental analysis for incident {incident.id}, log #{incident.log_count}")
+                else:
+                    context_text = self._format_context(log_entry, context_logs)
+                    analysis = await self._call_llm(context_text)
             else:
                 analysis = self._mock_analysis(log_entry, context_logs)
 
@@ -218,6 +297,11 @@ class AIService:
             result.status = "completed"
             db.commit()
             db.refresh(result)
+
+            try:
+                incident_service.update_incident_analysis(db, incident.id, result)
+            except Exception as inc_err:
+                print(f"[AIService] Update incident error: {inc_err}")
 
             try:
                 from .webhook_service import webhook_service
@@ -524,13 +608,11 @@ class AIService:
 
             print(f"[AIService] LLM response length: {len(content)}")
 
-            # 主要方式：从结构化文本中提取各部分（最稳定）
             result = self._extract_from_text(content)
             if result["summary"] and result["root_cause"] and result["suggestions"]:
                 print(f"[AIService] Text extraction succeeded, summary: {result['summary'][:50]}")
                 return result
 
-            # 备用方式：尝试解析 JSON
             print(f"[AIService] Text extraction incomplete, trying JSON parse...")
             import re
             content_clean = re.sub(r"^```(?:json)?\s*", "", content.strip())
@@ -544,7 +626,6 @@ class AIService:
             except json.JSONDecodeError:
                 pass
 
-            # 括号计数法找 JSON
             json_start = content_clean.find("{")
             if json_start >= 0:
                 brace_count = 0
@@ -581,7 +662,6 @@ class AIService:
                     except json.JSONDecodeError:
                         pass
 
-            # 全都失败了，用原始内容构造结果
             print(f"[AIService] All parsing failed, using raw content")
             return {
                 "summary": content[:100].replace("\n", " "),
@@ -594,6 +674,98 @@ class AIService:
         except Exception as e:
             print(f"[AIService] LLM call error: {e}")
             return self._mock_analysis_text(context_text)
+
+    async def _call_llm_incremental(self, previous_analysis, context_text: str) -> dict:
+        if not self._current_config:
+            prev_summary = previous_analysis.summary if previous_analysis else ""
+            return {
+                "summary": f"[增量更新] {prev_summary[:80]}",
+                "root_cause": "新日志到达，正在持续观察中。（Mock模式，未接入真实LLM）",
+                "impact_scope": previous_analysis.impact_scope if previous_analysis else "",
+                "severity": previous_analysis.severity if previous_analysis else "medium",
+                "suggestions": ["持续观察日志变化", "检查相关服务状态"],
+                "troubleshooting_commands": previous_analysis.troubleshooting_commands if previous_analysis else "",
+            }
+
+        try:
+            prev_summary = previous_analysis.summary or ""
+            prev_root_cause = previous_analysis.root_cause or ""
+            prev_severity = previous_analysis.severity or "medium"
+
+            prev_sug = ""
+            try:
+                sugs = json.loads(previous_analysis.suggestions) if previous_analysis.suggestions else []
+                if isinstance(sugs, list):
+                    prev_sug = "\n".join([f"{i+1}. {s}" for i, s in enumerate(sugs)])
+                else:
+                    prev_sug = str(sugs)
+            except Exception:
+                prev_sug = previous_analysis.suggestions or ""
+
+            system_prompt = INCREMENTAL_PROMPT.format(
+                previous_summary=prev_summary,
+                previous_root_cause=prev_root_cause,
+                previous_suggestions=prev_sug,
+                previous_severity=prev_severity,
+                context=context_text,
+            )
+
+            url = self._current_config["api_base"].rstrip("/") + "/chat/completions"
+            payload = {
+                "model": self._current_config["model_name"],
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": "请进行增量分析并按格式输出。"},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 3000,
+            }
+
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(
+                    url,
+                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {self._current_config['api_key']}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+            content = data["choices"][0]["message"]["content"]
+            print(f"[AIService] Incremental LLM response length: {len(content)}")
+
+            result = self._extract_from_text(content)
+            if result["summary"] and result["root_cause"]:
+                return result
+
+            try:
+                parsed = json.loads(content.strip())
+                if isinstance(parsed, dict) and "summary" in parsed:
+                    return self._normalize_result(parsed)
+            except Exception:
+                pass
+
+            return {
+                "summary": f"[增量] {content[:80]}",
+                "root_cause": content[:600],
+                "impact_scope": "",
+                "severity": prev_severity,
+                "suggestions": ["继续观察", "检查新日志线索"],
+                "troubleshooting_commands": "",
+            }
+        except Exception as e:
+            print(f"[AIService] Incremental LLM call error: {e}")
+            prev_summary = previous_analysis.summary or ""
+            return {
+                "summary": f"[增量更新] {prev_summary[:80]}",
+                "root_cause": f"增量分析调用失败：{str(e)}",
+                "impact_scope": previous_analysis.impact_scope if previous_analysis else "",
+                "severity": previous_analysis.severity if previous_analysis else "medium",
+                "suggestions": ["查看日志详情", "检查LLM服务状态"],
+                "troubleshooting_commands": previous_analysis.troubleshooting_commands if previous_analysis else "",
+            }
 
     def _mock_analysis(self, log_entry: LogEntry, context_logs: List[LogEntry]) -> dict:
         msg = log_entry.message.lower()

@@ -68,10 +68,14 @@ async def receive_webhook(
                 "source": source,
                 "service": service,
                 "raw_data": str(alert),
+                "alertname": alertname,
+                "namespace": labels.get("namespace", ""),
+                "instance": labels.get("instance", ""),
             }
 
             entry = log_service.add_log_sync(db, log_data)
-            if level == "error" and settings.AUTO_ANALYZE_ERROR:
+            from ..services.incident_service import should_auto_analyze
+            if should_auto_analyze(level, db):
                 await ai_service.analyze_log(entry.id)
 
     elif logs:
@@ -83,7 +87,8 @@ async def receive_webhook(
                 "service": log_item.get("service", raw_payload.get("service", "")),
             }
             await log_service.add_log_async(log_data)
-            if log_data["level"].lower() == "error" and settings.AUTO_ANALYZE_ERROR:
+            from ..services.incident_service import should_auto_analyze
+            if should_auto_analyze(log_data["level"], db):
                 entry = log_service.add_log_sync(db, log_data)
                 await ai_service.analyze_log(entry.id)
 
@@ -95,7 +100,8 @@ async def receive_webhook(
             "service": raw_payload.get("service", ""),
         }
         await log_service.add_log_async(log_data)
-        if log_data["level"].lower() == "error" and settings.AUTO_ANALYZE_ERROR:
+        from ..services.incident_service import should_auto_analyze
+        if should_auto_analyze(log_data["level"], db):
             entry = log_service.add_log_sync(db, log_data)
             await ai_service.analyze_log(entry.id)
 

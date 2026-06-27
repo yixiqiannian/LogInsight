@@ -36,6 +36,8 @@ class AnalysisResult(Base):
     context_logs = Column(Text)
     model_used = Column(String(100), default="")
     status = Column(String(20), default="pending")
+    incident_id = Column(Integer, default=0)
+    is_incremental = Column(Boolean, default=False)
 
 
 class WebhookConfig(Base):
@@ -56,9 +58,34 @@ class LLMConfig(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100))
-    provider = Column(String(50))
+    provider = Column(String(50), default="openai_compatible")
     api_base = Column(String(500))
     api_key = Column(String(500))
-    model_name = Column(String(200))
+    model_name = Column(String(100))
     is_default = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    incident_key = Column(String(200), index=True)
+    title = Column(String(500), default="")
+    severity = Column(String(20), default="medium")
+    status = Column(String(20), default="active")
+    first_seen = Column(DateTime, default=func.now())
+    last_seen = Column(DateTime, default=func.now())
+    log_count = Column(Integer, default=1)
+    latest_analysis_id = Column(Integer, default=0)
+    summary = Column(Text, default="")
+    created_at = Column(DateTime, default=func.now())
+
+
+class SystemConfig(Base):
+    __tablename__ = "system_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    config_key = Column(String(100), unique=True, index=True)
+    config_value = Column(Text, default="")
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

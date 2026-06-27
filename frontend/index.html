@@ -1213,6 +1213,15 @@ async function loadLLMConfigs() {
   }
 
   const sysConfig = await api('/api/config/system');
+  const autoLevel = sysConfig.analysis.auto_analyze_level || 'error';
+  const levelOptions = [
+    { value: 'all', label: '全部日志都分析' },
+    { value: 'error', label: '仅 ERROR' },
+    { value: 'warn', label: 'ERROR + WARN' },
+    { value: 'none', label: '不自动分析' },
+  ];
+  const levelLabel = levelOptions.find(o => o.value === autoLevel)?.label || autoLevel;
+
   document.getElementById('systemConfig').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
       <div>
@@ -1225,12 +1234,31 @@ async function loadLLMConfigs() {
       <div>
         <div style="font-weight:600;color:var(--ink);margin-bottom:.5rem">AI 分析配置</div>
         <div>上下文窗口: ${sysConfig.analysis.context_window_minutes} 分钟</div>
-        <div>自动分析 ERROR: ${sysConfig.analysis.auto_analyze_error ? '是' : '否'}</div>
-        <div>当前模型: ${sysConfig.llm.model_name}</div>
+        <div style="display:flex;align-items:center;gap:.5rem;margin-top:.3rem">
+          <span>自动分析级别:</span>
+          <select id="autoAnalyzeLevel" style="padding:.2rem .4rem;font-size:.8rem;border:1px solid var(--rule);border-radius:4px;background:var(--bg);color:var(--ink)">
+            ${levelOptions.map(o => `<option value="${o.value}" ${o.value === autoLevel ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+          <button class="btn btn-secondary" style="padding:.2rem .6rem;font-size:.78rem" onclick="saveAutoAnalyzeLevel()">保存</button>
+        </div>
+        <div style="margin-top:.5rem">当前模型: ${sysConfig.llm.model_name}</div>
         <div>LLM 已配置: ${sysConfig.llm.configured ? '<span style="color:var(--accent2)">是</span>' : '<span style="color:var(--warn)">否 (Mock模式)</span>'}</div>
       </div>
     </div>
+    <div style="margin-top:.8rem;font-size:.78rem;color:var(--muted)">
+      💡 同一事件的后续日志会进行增量分析（基于上一次分析结论继续更新），不会每次都从头开始。
+    </div>
   `;
+}
+
+async function saveAutoAnalyzeLevel() {
+  const level = document.getElementById('autoAnalyzeLevel').value;
+  await api('/api/config/system/auto-analyze-level', {
+    method: 'POST',
+    body: JSON.stringify({ level }),
+  });
+  showToast('自动分析级别已保存', 'success');
+  loadLLMConfigs();
 }
 
 function openLLMModal() {
