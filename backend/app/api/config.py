@@ -94,7 +94,7 @@ def get_system_config(db: Session = Depends(get_db)):
 
     if default_llm:
         llm_info = {
-            "api_type": default_llm.api_type,
+            "provider": default_llm.provider,
             "api_base": default_llm.api_base,
             "model_name": default_llm.model_name,
             "configured": True,
@@ -102,7 +102,7 @@ def get_system_config(db: Session = Depends(get_db)):
         }
     elif env_configured:
         llm_info = {
-            "api_type": settings.LLM_API_TYPE,
+            "provider": settings.LLM_API_TYPE,
             "api_base": settings.LLM_API_BASE,
             "model_name": settings.LLM_MODEL_NAME,
             "configured": True,
@@ -110,7 +110,7 @@ def get_system_config(db: Session = Depends(get_db)):
         }
     else:
         llm_info = {
-            "api_type": settings.LLM_API_TYPE,
+            "provider": settings.LLM_API_TYPE,
             "api_base": settings.LLM_API_BASE,
             "model_name": settings.LLM_MODEL_NAME,
             "configured": False,

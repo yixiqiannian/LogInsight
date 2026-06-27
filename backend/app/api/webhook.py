@@ -10,54 +10,96 @@ from ..config import settings
 router = APIRouter(prefix="/api/webhook", tags=["webhook"])
 
 
+def _severity_to_level(severity: str) -> str:
+    if not severity:
+        return "error"
+    s = severity.lower()
+    if s in ("critical", "fatal", "p1", "emergency"):
+        return "error"
+    elif s in ("high", "warning", "warn", "p2", "p3"):
+        return "warn"
+    elif s in ("low", "info", "p4", "ok", "resolved", "normal"):
+        return "info"
+    return "error"
+
+
 @router.post("/inbound")
 async def receive_webhook(
-    payload: WebhookPayload,
     request: Request,
     db: Session = Depends(get_db),
 ):
+    raw_payload = await request.json()
     source = request.headers.get("X-Webhook-Source", "webhook")
 
-    if payload.logs:
-        for log_item in payload.logs:
+    alerts = raw_payload.get("alerts") or []
+    logs = raw_payload.get("logs") or []
+
+    if alerts:
+        for alert in alerts:
+            labels = alert.get("labels", {}) or {}
+            annotations = alert.get("annotations", {}) or {}
+
+            status = alert.get("status", "firing")
+            severity = labels.get("severity", labels.get("level", "critical"))
+            alertname = labels.get("alertname", "Unknown Alert")
+
+            level = _severity_to_level(severity) if status == "firing" else "info"
+
+            summary = annotations.get("summary", annotations.get("message", ""))
+            description = annotations.get("description", annotations.get("details", ""))
+
+            msg_parts = []
+            if status == "firing":
+                msg_parts.append(f"[告警触发] {alertname}")
+            else:
+                msg_parts.append(f"[告警恢复] {alertname}")
+            if summary:
+                msg_parts.append(summary)
+            if description:
+                msg_parts.append(description)
+
+            message = " - ".join(msg_parts)
+
+            service = labels.get("service", labels.get("app", labels.get("namespace", "")))
+
             log_data = {
-                "level": log_item.get("level", payload.level),
+                "level": level,
+                "message": message,
+                "source": source,
+                "service": service,
+                "raw_data": str(alert),
+            }
+
+            entry = log_service.add_log_sync(db, log_data)
+            if level == "error" and settings.AUTO_ANALYZE_ERROR:
+                await ai_service.analyze_log(entry.id)
+
+    elif logs:
+        for log_item in logs:
+            log_data = {
+                "level": log_item.get("level", raw_payload.get("level", "info")),
                 "message": log_item.get("message", ""),
                 "source": log_item.get("source", source),
-                "service": log_item.get("service", payload.service),
+                "service": log_item.get("service", raw_payload.get("service", "")),
             }
             await log_service.add_log_async(log_data)
             if log_data["level"].lower() == "error" and settings.AUTO_ANALYZE_ERROR:
                 entry = log_service.add_log_sync(db, log_data)
                 await ai_service.analyze_log(entry.id)
 
-    elif payload.alerts:
-        for alert in payload.alerts:
-            log_data = {
-                "level": "error" if alert.get("status") == "firing" else "warn",
-                "message": f"[Alert] {alert.get('labels', {}).get('alertname', 'Unknown')}: "
-                           f"{alert.get('annotations', {}).get('summary', '')}",
-                "source": source,
-                "service": alert.get("labels", {}).get("service", payload.service or ""),
-                "raw_data": str(alert),
-            }
-            entry = log_service.add_log_sync(db, log_data)
-            if settings.AUTO_ANALYZE_ERROR:
-                await ai_service.analyze_log(entry.id)
-
     else:
         log_data = {
-            "level": payload.level or "info",
-            "message": payload.message or "",
+            "level": raw_payload.get("level", "info"),
+            "message": raw_payload.get("message", ""),
             "source": source,
-            "service": payload.service or "",
+            "service": raw_payload.get("service", ""),
         }
         await log_service.add_log_async(log_data)
         if log_data["level"].lower() == "error" and settings.AUTO_ANALYZE_ERROR:
             entry = log_service.add_log_sync(db, log_data)
             await ai_service.analyze_log(entry.id)
 
-    return {"status": "received"}
+    return {"status": "received", "alerts_processed": len(alerts), "logs_processed": len(logs)}
 
 
 @router.get("/configs")

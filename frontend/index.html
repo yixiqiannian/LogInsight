@@ -332,9 +332,9 @@ body{font-family:var(--font);color:var(--ink);background:var(--bg);line-height:1
       <div class="card" style="margin-bottom:1.5rem">
         <div class="card-title">
           <span class="icon">📥</span>
-          入站 Webhook（接收日志）
+          入站 Webhook（接收日志/告警）
         </div>
-        <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">将以下 URL 配置到你的日志系统或告警平台，即可自动推送日志到 LogInsight</p>
+        <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">将以下 URL 配置到你的日志系统或告警平台，即可自动推送日志到 LogInsight，触发时自动 AI 分析</p>
         <div style="background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:.75rem;font-family:var(--font-mono);font-size:.8rem;display:flex;align-items:center;gap:.5rem">
           <span id="webhookUrl" style="flex:1;color:var(--accent)">POST /api/webhook/inbound</span>
           <button class="btn btn-secondary" onclick="copyWebhookUrl()">复制</button>
@@ -345,12 +345,26 @@ body{font-family:var(--font);color:var(--ink);background:var(--bg);line-height:1
             <div style="font-size:.78rem;color:var(--muted);font-family:var(--font-mono)">
               • 单条日志: {level, message, service}<br>
               • 批量日志: {logs: [...]}<br>
-              • 告警格式: {alerts: [...]}
+              • Grafana告警: {alerts: [...]}
             </div>
           </div>
           <div style="background:var(--bg);border:1px solid var(--rule);border-radius:6px;padding:.75rem">
-            <div style="font-size:.82rem;font-weight:600;color:var(--warn);margin-bottom:.5rem">测试推送</div>
-            <button class="btn btn-secondary" style="width:100%" onclick="sendTestWebhook()">发送测试日志</button>
+            <div style="font-size:.82rem;font-weight:600;color:var(--warn);margin-bottom:.5rem">快速测试</div>
+            <button class="btn btn-secondary" style="width:100%;margin-bottom:.4rem" onclick="sendTestWebhook()">发送测试日志</button>
+            <button class="btn btn-secondary" style="width:100%" onclick="sendTestGrafanaAlert()">模拟Grafana告警</button>
+          </div>
+        </div>
+
+        <div style="margin-top:1rem;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);border-radius:6px;padding:.75rem">
+          <div style="font-size:.82rem;font-weight:600;color:var(--accent);margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem">
+            📊 Grafana 告警对接指南
+          </div>
+          <div style="font-size:.78rem;color:var(--muted);line-height:1.8">
+            <strong>步骤 1：</strong>在 Grafana 中进入 <code style="font-family:var(--font-mono);background:var(--bg);padding:.1rem .3rem;border-radius:4px">Alerting → Contact points</code><br>
+            <strong>步骤 2：</strong>新建 Contact point，类型选择 <code style="font-family:var(--font-mono);background:var(--bg);padding:.1rem .3rem;border-radius:4px">Webhook</code><br>
+            <strong>步骤 3：</strong>URL 填入上面的 Webhook 地址，保存<br>
+            <strong>步骤 4：</strong>在告警规则的 Notification 中选择该 Contact point<br>
+            <strong>注意：</strong>告警触发时自动 AI 分析，可在 LogInsight 日志页面查看分析结果
           </div>
         </div>
       </div>
@@ -1046,6 +1060,46 @@ async function sendTestWebhook() {
     body: JSON.stringify({ logs: testLogs, source: 'test' }),
   });
   showToast('测试日志已发送', 'success');
+  switchPage('logs');
+}
+
+async function sendTestGrafanaAlert() {
+  const testAlert = {
+    receiver: "LogInsight",
+    status: "firing",
+    alerts: [
+      {
+        status: "firing",
+        labels: {
+          alertname: "HighErrorRate",
+          severity: "critical",
+          namespace: "production",
+          service: "api-gateway",
+          instance: "10.0.0.12:8080",
+        },
+        annotations: {
+          summary: "API 网关错误率超过 5%",
+          description: "过去 5 分钟内 api-gateway 错误率达到 12.3%，远超阈值 5%，可能由下游服务异常或流量突增导致。",
+        },
+        startsAt: new Date().toISOString(),
+        endsAt: "0001-01-01T00:00:00Z",
+        generatorURL: "https://grafana.example.com/d/abc123/api-overview",
+        fingerprint: "abcdef123456",
+      },
+    ],
+    groupLabels: { alertname: "HighErrorRate" },
+    commonLabels: { severity: "critical", namespace: "production" },
+    commonAnnotations: {},
+    externalURL: "https://grafana.example.com/",
+    version: "4",
+    groupKey: "{}:{alertname=\"HighErrorRate\"}",
+    truncatedAlerts: 0,
+  };
+  await api('/api/webhook/inbound', {
+    method: 'POST',
+    body: JSON.stringify(testAlert),
+  });
+  showToast('模拟 Grafana 告警已发送', 'success');
   switchPage('logs');
 }
 
